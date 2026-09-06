@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DRISHTINAV - AI Dead Reckoning System</title>
+    <link rel="stylesheet" href="/frontend/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- HERO -->
+    <header class="hero">
+        <div class="hero-inner">
+            <div class="badge">ISRO / SIH 2025 / PS-168</div>
+            <h1>DRISHTI<span class="accent">NAV</span></h1>
+            <p class="subtitle">AI-Powered Intelligent Dead Reckoning for Seamless GNSS-Denied Navigation</p>
+            <div class="team-line">Team Paradigm</div>
+        </div>
+    </header>
+
+    <!-- PIPELINE DIAGRAM -->
+    <section class="section pipeline-section">
+        <h2 class="section-title">Architecture Pipeline</h2>
+        <div class="pipeline">
+            <div class="pipe-box pipe-imu">
+                <span class="pipe-icon">IMU</span>
+                <span class="pipe-label">Accel + Gyro + Mag</span>
+            </div>
+            <div class="pipe-arrow">&rarr;</div>
+            <div class="pipe-box pipe-filter">
+                <span class="pipe-icon">FILTER</span>
+                <span class="pipe-label">Bias + Vibration Removal</span>
+            </div>
+            <div class="pipe-arrow">&rarr;</div>
+            <div class="pipe-box pipe-speed">
+                <span class="pipe-icon">AI SPEED</span>
+                <span class="pipe-label">Ridge Regression Model</span>
+            </div>
+            <div class="pipe-arrow">&rarr;</div>
+            <div class="pipe-box pipe-fusion">
+                <span class="pipe-icon">EKF FUSION</span>
+                <span class="pipe-label">GNSS + INS + NHC</span>
+            </div>
+            <div class="pipe-arrow">&rarr;</div>
+            <div class="pipe-box pipe-map">
+                <span class="pipe-icon">MAP MATCH</span>
+                <span class="pipe-label">Road Snapping</span>
+            </div>
+            <div class="pipe-arrow">&rarr;</div>
+            <div class="pipe-box pipe-output">
+                <span class="pipe-icon">OUTPUT</span>
+                <span class="pipe-label">Lane-Level Position</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- CONTROL PANEL -->
+    <section class="section control-section">
+        <div class="control-panel">
+            <h2>Simulation Control</h2>
+            <div class="control-row">
+                <div class="control-group">
+                    <label for="duration">Duration (sec)</label>
+                    <select id="duration">
+                        <option value="60">60s - Short Demo</option>
+                        <option value="120" selected>120s - Standard</option>
+                        <option value="180">180s - Extended</option>
+                    </select>
+                </div>
+                <button id="runBtn" class="btn-primary" onclick="runSimulation()">
+                    RUN SIMULATION
+                </button>
+                <div id="status" class="status-indicator">
+                    <span class="status-dot idle"></span> Ready
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- RESULTS GRID -->
+    <section class="section results-section" id="results" style="display:none;">
+        <!-- Metrics Cards -->
+        <div class="metrics-row">
+            <div class="metric-card">
+                <div class="metric-label">Dead Reckoning Drift</div>
+                <div class="metric-number" id="dr-drift">--</div>
+                <div class="metric-sub">Target: &lt;10%</div>
+                <div class="metric-badge" id="dr-badge">--</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">EKF Fusion Drift</div>
+                <div class="metric-number" id="ekf-drift">--</div>
+                <div class="metric-sub">AI-Guided EKF</div>
+                <div class="metric-badge" id="ekf-badge">--</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Map-Matched Drift</div>
+                <div class="metric-number" id="map-drift">--</div>
+                <div class="metric-sub">Road-Constrained</div>
+                <div class="metric-badge" id="map-badge">--</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Speed Estimation RMSE</div>
+                <div class="metric-number" id="speed-rmse">--</div>
+                <div class="metric-sub">AI Predictor</div>
+                <div class="metric-badge neutral">Ridge Model</div>
+            </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="charts-grid">
+            <!-- Trajectory Map -->
+            <div class="chart-card wide">
+                <h3>Trajectory Comparison</h3>
+                <div id="trajectory-map" class="map-container"></div>
+                <div class="legend">
+                    <span class="legend-item"><span class="legend-color" style="background:#000"></span>Ground Truth</span>
+                    <span class="legend-item"><span class="legend-color" style="background:#FF6B35"></span>Dead Reckoning</span>
+                    <span class="legend-item"><span class="legend-color" style="background:#004E89"></span>EKF Fusion</span>
+                    <span class="legend-item"><span class="legend-color" style="background:#2ECC40"></span>Map-Matched</span>
+                    <span class="legend-item"><span class="legend-color" style="background:rgba(255,0,0,0.3)"></span>GPS Outage</span>
+                </div>
+            </div>
+
+            <!-- Drift Chart -->
+            <div class="chart-card">
+                <h3>Position Drift Over Time</h3>
+                <canvas id="driftCanvas" width="500" height="300"></canvas>
+            </div>
+
+            <!-- Speed Chart -->
+            <div class="chart-card">
+                <h3>AI Speed Estimation</h3>
+                <canvas id="speedCanvas" width="500" height="300"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+        <div class="footer-inner">
+            <span>Team Paradigm | Problem Statement 168 | ISRO / SIH 2025</span>
+            <span class="footer-tech">Python + Flask + Leaflet.js + Neo-Brutalism</span>
+        </div>
+    </footer>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/frontend/app.js"></script>
+</body>
+</html>
