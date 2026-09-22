@@ -1,0 +1,46 @@
+[
+ {
+  "file": "burton_val.json",
+  "name": "burton_val",
+  "bbox": [
+   52.775,
+   -1.645,
+   52.824,
+   -1.614
+  ],
+  "ways": 805
+ },
+ {
+  "file": "coventry_test.json",
+  "name": "coventry_test",
+  "bbox": [
+   52.365,
+   -1.61,
+   52.425,
+   -1.495
+  ],
+  "ways": 4148
+ },
+ {
+  "file": "coventry_val.json",
+  "name": "coventry_val",
+  "bbox": [
+   52.358,
+   -1.466,
+   52.41,
+   -1.225
+  ],
+  "ways": 3359
+ },
+ {
+  "file": "delhi_central.json",
+  "name": "delhi_central",
+  "bbox": [
+   28.585,
+   77.195,
+   28.64,
+   77.265
+  ],
+  "ways": 2630
+ }
+]

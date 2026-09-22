@@ -1,0 +1,16 @@
+[
+ {
+  "file": "iovnbd_s1.csv",
+  "title": "IO-VNBD S1 (Coventry, held-out test drive) - 7.3 km, 18 min",
+  "roads": "coventry_test.json",
+  "source_segment": "S1#5",
+  "resync_lag": -2
+ },
+ {
+  "file": "iovnbd_s4.csv",
+  "title": "IO-VNBD S4 (Coventry, held-out test drive) - 23.6 km, 48 min",
+  "roads": "coventry_test.json",
+  "source_segment": "S4#0",
+  "resync_lag": -18
+ }
+]

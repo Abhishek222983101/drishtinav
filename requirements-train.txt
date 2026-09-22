@@ -1,0 +1,6 @@
+# Training / export of SpeedNet (desktop / cloud)
+-r requirements.txt
+torch>=2.2
+onnx>=1.15
+pytest>=8
+cryptography>=42       # only for `python -m drishtinav serve --https` (phone sensors need HTTPS)

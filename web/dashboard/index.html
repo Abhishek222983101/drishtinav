@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DrishtiNav Dashboard</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/vendor/leaflet.css">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/dashboard/style.css">
+</head>
+<body>
+<header class="hero">
+  <div class="hero-inner">
+    <div class="badge">ISRO · SMART INDIA HACKATHON 2026 · PS 26168</div>
+    <h1>DRISHTI<span class="accent">NAV</span></h1>
+    <p class="subtitle">AI-ML Intelligent Dead Reckoning with seamless GNSS + INS fusion — smartphone app &amp; edge engine</p>
+    <div class="team-line">Team Paradigm</div>
+    <nav class="hero-links">
+      <a href="/app/" class="chip">📱 Phone app</a>
+      <a href="#benchmark" class="chip">📊 IO-VNBD benchmark</a>
+      <a href="#pipeline" class="chip">🧩 Architecture</a>
+    </nav>
+  </div>
+</header>
+
+<section class="section" id="pipeline">
+  <h2 class="section-title">Pipeline (runs per IMU sample, 10 Hz phone / 200 Hz edge)</h2>
+  <div class="pipeline">
+    <div class="pipe-box c1"><b>IMU + GNSS</b><span>accel · gyro · 1 Hz fix</span></div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-box c2"><b>ALIGN &amp; CALIBRATE</b><span>levelling · yaw mount · gyro axis · ZUPT/ZARU</span></div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-box c3"><b>AI SPEEDNET</b><span>TCN pseudo-odometer · σ · p(stationary)</span></div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-box c4"><b>EKF + NHC</b><span>AI-adaptive noise · GNSS deficit handler</span></div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-box c5"><b>HMM MAP MATCH</b><span>offline OSM · cross-track + heading</span></div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-box c6"><b>OUTPUT</b><span>on-road pose · smooth icon · 10–200 Hz</span></div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="panel control-panel">
+    <h3>Run the engine</h3>
+    <div class="control-row">
+      <label class="control-group">Scenario
+        <select id="scenario"></select>
+      </label>
+      <label class="control-group" id="outageGroup">GNSS outage length
+        <select id="outage">
+          <option value="30">30 s</option>
+          <option value="60" selected>60 s</option>
+          <option value="120">120 s</option>
+          <option value="180">180 s</option>
+        </select>
+      </label>
+      <button id="runBtn" class="btn-primary">RUN</button>
+      <div id="status" class="status"><span class="dot idle"></span> Ready</div>
+    </div>
+    <p class="hint" id="scenarioHint"></p>
+    <div class="live-row">
+      <span class="live-label">Live Python engine:</span>
+      <label class="seed">noise seed <input id="seed" type="number" value="11" min="1" max="9999"></label>
+      <button id="liveBtn" class="btn-small">⚡ Re-run live (full pipeline)</button>
+      <span class="hint" id="liveHint">RUN shows precomputed results instantly. This button recomputes the full pipeline on the deployed engine with a new random seed (different sensor/GNSS noise) — the free server may need ~1 min to wake up.</span>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="results" hidden>
+  <div class="kpis" id="kpis"></div>
+
+  <div class="grid-2">
+    <div class="panel map-panel">
+      <div class="panel-head">
+        <h3 id="mapTitle">Trajectory</h3>
+        <div class="legend" id="legend"></div>
+      </div>
+      <div id="map"></div>
+      <div class="player">
+        <button id="playBtn" class="btn-small">▶ Play</button>
+        <input type="range" id="scrub" min="0" max="1000" value="0">
+        <span id="clock" class="mono">t = 0 s</span>
+      </div>
+    </div>
+    <div class="panel telemetry">
+      <h3>Live telemetry (full pipeline)</h3>
+      <div class="tele-grid">
+        <div class="tele"><label>MODE</label><div id="tMode" class="mode-pill">—</div></div>
+        <div class="tele"><label>SPEED</label><div id="tSpeed" class="big mono">—</div></div>
+        <div class="tele"><label>HEADING</label><div id="tHead" class="big mono">—</div></div>
+        <div class="tele"><label>POS ERROR</label><div id="tErr" class="big mono">—</div></div>
+        <div class="tele"><label>AI SPEED</label><div id="tAi" class="mono">—</div></div>
+        <div class="tele"><label>1σ</label><div id="tSig" class="mono">—</div></div>
+        <div class="tele"><label>MAP CONF</label><div id="tConf" class="mono">—</div></div>
+        <div class="tele"><label>STATIONARY</label><div id="tStat" class="mono">—</div></div>
+      </div>
+      <h4>Mount alignment (learned online)</h4>
+      <div id="diag" class="diag mono"></div>
+      <h4>Mode timeline</h4>
+      <canvas id="modeStrip" height="34"></canvas>
+      <div class="mode-legend mono"><span class="m-gnss">GNSS</span><span class="m-dr">DR</span><span class="m-rec">RECOVERY</span><span class="m-deg">DEGRADED</span></div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="panel"><h3>Position error vs reference</h3><canvas id="errChart" height="260"></canvas></div>
+    <div class="panel"><h3>Speed: reference vs SpeedNet vs fused</h3><canvas id="spdChart" height="260"></canvas></div>
+  </div>
+
+  <div class="panel">
+    <h3>Per-outage results <span class="muted">(drift = error at end of outage ÷ distance driven without GNSS; PS target &lt; 10 %)</span></h3>
+    <div class="table-wrap"><table id="outTable"></table></div>
+  </div>
+</section>
+
+<section class="section" id="benchmark">
+  <h2 class="section-title">IO-VNBD benchmark (held-out test drives)</h2>
+  <div class="panel">
+    <p class="muted" id="benchMeta">Loading…</p>
+    <div class="table-wrap"><table id="benchTable"></table></div>
+  </div>
+  <div class="panel">
+    <h3>Pragati Maidan tunnel (simulated, 1.35 km without GNSS) — 10 random seeds</h3>
+    <p class="muted">Each seed is a new noise realisation: sensor noise &amp; biases, holder wobble, potholes, GNSS multipath at the portals. Drift = error at the tunnel exit ÷ tunnel length.</p>
+    <div class="table-wrap"><table id="synTable"></table></div>
+  </div>
+  <div class="grid-2">
+    <div class="panel"><h3>SpeedNet (AI pseudo-odometer)</h3><div id="speedMetrics" class="mono small"></div></div>
+    <div class="panel"><h3>How to read this</h3>
+      <ul class="notes">
+        <li><b>INS + NHC + ZUPT</b>: classical vehicle EKF — phone gyro heading, accelerometer speed, no AI, no map.</li>
+        <li><b>+ AI speed</b>: SpeedNet predicts forward speed &amp; its own uncertainty from 20 s of IMU; the EKF uses that σ as measurement noise; its scale self-calibrates against GNSS before the outage.</li>
+        <li><b>+ HMM map matching</b>: offline OpenStreetMap; confident matches constrain cross-track position and heading, turns at junctions reset along-track error.</li>
+        <li>GNSS aiding = reference receiver degraded to 1 Hz smartphone quality; outages injected every L + 90 s.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <span>Team Paradigm · PS 26168 · ISRO / SIH 2026</span>
+  <span>Python edge engine · SpeedNet (PyTorch → ONNX / JSON) · Leaflet · OpenStreetMap</span>
+</footer>
+
+<script src="/config.js"></script>
+<script src="/vendor/leaflet.js"></script>
+<script src="/dashboard/charts.js"></script>
+<script src="/dashboard/app.js"></script>
+</body>
+</html>

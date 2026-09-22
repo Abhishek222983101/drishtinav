@@ -1,0 +1,39 @@
+{
+  "train": {
+    "rmse_ms": 2.4772467613220215,
+    "mae_ms": 1.763671875,
+    "rmse_moving_ms": 2.562321901321411,
+    "bias_ms": -0.1278274804353714,
+    "calibration_std_of_z": 0.9959990382194519,
+    "within_2sigma": 0.9463537765942692,
+    "stationary_accuracy": 0.9804906012778194,
+    "stationary_recall": 0.8156288156288156,
+    "n": 108153
+  },
+  "val": {
+    "rmse_ms": 3.364631175994873,
+    "mae_ms": 2.5331249237060547,
+    "rmse_moving_ms": 3.4236130714416504,
+    "bias_ms": 0.39789363741874695,
+    "calibration_std_of_z": 1.4961200952529907,
+    "within_2sigma": 0.8417786970010341,
+    "stationary_accuracy": 0.9754567390554981,
+    "stationary_recall": 0.7324414715719063,
+    "n": 14505
+  },
+  "test": {
+    "rmse_ms": 2.534611463546753,
+    "mae_ms": 1.8788328170776367,
+    "rmse_moving_ms": 2.6162853240966797,
+    "bias_ms": 0.3714088499546051,
+    "calibration_std_of_z": 1.1667561531066895,
+    "within_2sigma": 0.9230995614938639,
+    "stationary_accuracy": 0.9418464345625239,
+    "stationary_recall": 0.5067547283098168,
+    "n": 33979
+  },
+  "params": 18787,
+  "train_seconds": 430.4,
+  "window_s": 20.0,
+  "dataset": "IO-VNBD synchronised drives (resynced), drive-level split: train M,S2,S3c,Vfa02,Vta1a,Vtb5,Vtb1 | val S3a,S3b,Vta2 | test S1,S4"
+}

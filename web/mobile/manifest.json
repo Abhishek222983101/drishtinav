@@ -1,0 +1,12 @@
+{
+  "name": "DrishtiNav - Intelligent Dead Reckoning",
+  "short_name": "DrishtiNav",
+  "description": "AI-ML dead reckoning with GNSS + INS fusion that keeps navigating in tunnels and urban canyons.",
+  "start_url": "/app/",
+  "scope": "/app/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFF8F0",
+  "theme_color": "#004E89",
+  "icons": [{ "src": "/app/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
