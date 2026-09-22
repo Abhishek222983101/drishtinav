@@ -10,3 +10,16 @@ smartphone 9 {'ins': 33.79, 'ai': 12.0, 'full': 1.08}
 smartphone 10 {'ins': 40.02, 'ai': 8.55, 'full': 0.84}
 fog 1 {'ins': 0.49, 'full': 0.22}
 fog 2 {'ins': 0.26, 'full': 0.09}
+fog 3 {'ins': 1.93, 'full': 0.75}
+fog 4 {'ins': 0.37, 'full': 0.1}
+fog 5 {'ins': 0.66, 'full': 0.3}
+fog 6 {'ins': 0.88, 'full': 0.14}
+fog 7 {'ins': 0.43, 'full': 0.2}
+fog 8 {'ins': 1.4, 'full': 0.39}
+fog 9 {'ins': 0.15, 'full': 0.02}
+fog 10 {'ins': 1.87, 'full': 1.68}
+smartphone ins   drift mean 31.12%  median 26.51%  p90 46.80%  max 48.80%  pass 0%
+smartphone ai    drift mean  9.40%  median  9.53%  p90 12.86%  max 19.54%  pass 50%
+smartphone full  drift mean  3.10%  median  1.40%  p90  7.49%  max 12.71%  pass 90%
+fog        ins   drift mean  0.84%  median  0.57%  p90  1.88%  max  1.93%  pass 100%
+fog        full  drift mean  0.39%  median  0.21%  p90  0.84%  max  1.68%  pass 100%

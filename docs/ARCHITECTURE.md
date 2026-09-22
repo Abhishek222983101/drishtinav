@@ -88,10 +88,10 @@ slip, no vertical motion) is part of the model. Measurements, each χ²-gated:
 | GNSS speed | v | (0.3 m/s)² | |
 | GNSS course | ψ | (3°)² | only when |ω| < 0.08 rad/s (course lags in turns) |
 | ZUPT + ZARU | v = 0, b_g = ω | (0.03)², (0.002)² | stationary detector |
-| **AI speed** | v = k·v_nn | max(0.35, 4.5·σ_nn)² | σ_nn is SpeedNet's own uncertainty (AI-adaptive noise, cf. AI-IMU DR); ×4.5 accounts for its errors being correlated over 10–20 s; k = online GNSS/SpeedNet scale learned before the outage (per phone, holder, vehicle) |
-| **Map** | n·(p − p_road) = 0, ψ = ψ_road | (0.6·half-width)², (6°)² | only if HMM posterior ≥ 0.95 and filter σ ≤ 12 m; updates position and heading **only** |
+| **AI speed** | v = k·v_nn | max(0.35, 2.0·σ_nn)² | σ_nn is SpeedNet's own uncertainty (AI-adaptive noise, cf. AI-IMU DR); ×2.0 accounts for its errors being correlated over 10–20 s; k = online GNSS/SpeedNet scale learned before the outage (per phone, holder, vehicle) |
+| **Map** | n·(p − p_road) = 0, ψ = ψ_road | (0.6·half-width)², (6°)² | only if HMM posterior ≥ 0.9 and filter σ ≤ 25 m; updates position and heading **only** |
 
-During DR the phone accelerometer is not integrated (speed is a 0.5 m/s²/√s random
+During DR the phone accelerometer is not integrated (speed is a 1.0 m/s²/√s random
 walk corrected by SpeedNet); edge profiles with good accelerometers integrate it.
 
 ## GNSS deficit handler (`drishtinav/gnss_handler.py`)

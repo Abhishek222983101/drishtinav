@@ -56,9 +56,13 @@ on IO-VNBD. Sources were found and read with web search (Exa) during development
 * The PS suggests "UKF + HMM map matching"; we use an EKF (the model is only mildly
   non-linear at 10 Hz) and an HMM, and apply map information as geometry-only
   (Schmidt-consider) pseudo-measurements after finding that full updates let wrong
-  matches corrupt the speed state (validation: individual outages failed by 100–990 m;
-  with geometry-only updates plus confidence ≥ 0.95 and σ ≤ 12 m gating, the map
-  configuration no longer underperforms map-free dead reckoning).
+  matches corrupt the speed state (validation: individual outages failed by 100–990 m
+  under a full update). Geometry-only updates fixed that; the confidence/σ gate itself
+  was then re-tuned on validation once the outage-scoring bug in `docs/RESULTS.md` §6
+  was fixed (final values `map_min_conf=0.9`, `map_max_pos_sigma=25` — looser than an
+  earlier, over-cautious 0.95/12 m that barely let map updates fire at all). With that
+  gate, map matching roughly doubles the pass rate over AI-speed-only dead reckoning
+  (see `docs/RESULTS.md` §1).
 
 ## Scenario & platform facts
 
