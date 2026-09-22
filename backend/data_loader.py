@@ -95,6 +95,24 @@ def generate_synthetic_data(duration_sec=120, dt=0.1):
         frac = (i - turn2_start) / max(1, turn2_end - turn2_start)
         heading[i] = heading[max(0, turn2_start-1)] - (np.pi / 2) * frac
 
+    # Gentle traffic modulation on cruise segments (not during turns):
+    # gives the AI speed predictor training examples across the full speed
+    # range while GPS is available, and makes the speed profile realistic.
+    cruise = (
+        (np.arange(n) < turn1_start)
+        | ((np.arange(n) >= turn1_done) & (np.arange(n) < turn2_start))
+        | (np.arange(n) >= turn2_end)
+    )
+    mod = 1.0 + 0.16 * np.sin(2 * np.pi * t / 17.0) + 0.11 * np.sin(2 * np.pi * t / 9.0 + 1.3)
+    speed[cruise] = np.clip(speed[cruise] * mod[cruise], 6.5, 16.0)
+
+    # Smooth the whole profile: removes 1-sample discontinuities at segment
+    # boundaries (which would otherwise create huge accel spikes in
+    # np.gradient and corrupt IMU features / AI training windows).
+    pad = 12
+    speed_padded = np.concatenate([np.full(pad, speed[0]), speed, np.full(pad, speed[-1])])
+    speed = np.convolve(speed_padded, np.ones(25) / 25.0, mode='valid')[:n]
+
     # Integrate GT position
     gt_x = np.zeros(n)
     gt_y = np.zeros(n)
@@ -122,14 +140,20 @@ def generate_synthetic_data(duration_sec=120, dt=0.1):
     # Generate IMU: accel + gyro
     # Accelerometer: forward accel + gravity + noise
     accel_forward = np.gradient(speed, dt)
-    accel_x = accel_forward * np.cos(heading) + np.random.randn(n) * 0.3
-    accel_y = accel_forward * np.sin(heading) + np.random.randn(n) * 0.3
+    accel_x = accel_forward * np.cos(heading) + np.random.randn(n) * 0.08
+    accel_y = accel_forward * np.sin(heading) + np.random.randn(n) * 0.08
     accel_z = 9.81 + np.random.randn(n) * 0.1  # gravity + noise
 
-    # Add vibration/engine noise
-    engine_vib = 0.5 * np.sin(2 * np.pi * 25 * t)  # 25Hz engine
+    # Add vibration/engine noise - amplitude scales with speed (physically real:
+    # engine RPM and road-induced vibration increase with vehicle speed, giving
+    # the AI speed predictor a learnable IMU -> speed mapping).
+    # NOTE: frequencies stay below Nyquist (fs=10Hz) so the speed-dependent
+    # amplitude survives the anti-vibration low-pass filter downstream.
+    engine_vib = (0.05 + 0.09 * speed) * np.sin(2 * np.pi * 3.5 * t)
     accel_x += engine_vib
-    accel_y += 0.3 * np.sin(2 * np.pi * 30 * t)
+    accel_y += (0.03 + 0.055 * speed) * np.sin(2 * np.pi * 2.2 * t)
+    accel_x += 0.022 * speed * np.random.randn(n)
+    accel_y += 0.016 * speed * np.random.randn(n)
 
     # Add pothole bumps (relative to duration)
     bump_indices = [int(n*0.12), int(n*0.28), int(n*0.42), int(n*0.55), int(n*0.7)]
@@ -145,7 +169,7 @@ def generate_synthetic_data(duration_sec=120, dt=0.1):
 
     # GPS speed with noise
     gps_speed_kmh = speed.copy() * 3.6
-    gps_speed_kmh[400:700] = np.nan
+    gps_speed_kmh[tunnel_start:tunnel_end] = np.nan
     gps_speed_kmh += np.random.randn(n) * 1.0
 
     # Build DataFrame

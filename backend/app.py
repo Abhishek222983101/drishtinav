@@ -10,7 +10,7 @@ from pathlib import Path
 from flask import Flask, send_from_directory, jsonify, send_file
 
 sys.path.insert(0, os.path.dirname(__file__))
-from data_loader import generate_synthetic_data, gps_to_enu, create_tunnel_mask
+from data_loader import generate_synthetic_data, gps_to_enu
 from imu_engine import (
     IMUCalibrator, AlignmentEngine, SpeedPredictor,
     DeadReckoner, EKFusion, MapMatcher
@@ -40,6 +40,7 @@ def run_pipeline(duration_sec=120, dt=0.1):
     # 2. Extract sensor data
     accel = df[['accel_x', 'accel_y', 'accel_z']].values
     gyro = df[['gyro_yaw', 'gyro_pitch', 'gyro_roll']].values
+    mag = df[['mag_x', 'mag_y', 'mag_z']].values
     gps_speed_kmh = df['gps_speed_kmh'].values
     gps_speed_ms = np.where(np.isnan(gps_speed_kmh), 0, gps_speed_kmh / 3.6)
 
@@ -51,6 +52,7 @@ def run_pipeline(duration_sec=120, dt=0.1):
     gt_x = df.attrs.get('gt_x', np.zeros(n))
     gt_y = df.attrs.get('gt_y', np.zeros(n))
     gt_speed = df.attrs.get('gt_speed', np.zeros(n))
+    gt_heading = df.attrs.get('gt_heading', np.zeros(n))
     tunnel_start = df.attrs.get('tunnel_start', 400)
     tunnel_end = df.attrs.get('tunnel_end', 700)
 
@@ -58,44 +60,69 @@ def run_pipeline(duration_sec=120, dt=0.1):
     calibrator = IMUCalibrator(sample_rate=1.0/dt)
     accel_cal, gyro_cal = calibrator.process(accel, gyro)
 
-    # 4. Alignment
+    # 4. Alignment (yaw from tilt-compensated magnetometer)
     aligner = AlignmentEngine()
-    yaw0, pitch0, roll0 = aligner.estimate_alignment(accel_cal, gyro_cal)
+    yaw0, pitch0, roll0 = aligner.estimate_alignment(accel_cal, gyro_cal, mag=mag)
+
+    # Magnetometer heading: tilt-compensated with estimated pitch/roll.
+    # The geomagnetic field persists inside tunnels, making this the key
+    # drift-free heading source when GPS is denied.
+    cp, sp = np.cos(pitch0), np.sin(pitch0)
+    cr, sr = np.cos(roll0), np.sin(roll0)
+    mx, my, mz = mag[:, 0], mag[:, 1], mag[:, 2]
+    mx_h = mx * cp + my * sr * sp + mz * cr * sp
+    my_h = my * cr - mz * sr
+    mag_heading = np.arctan2(my_h, mx_h)
 
     # 5. Rotate to nav frame
     accel_nav = aligner.rotate_body_to_nav(accel_cal)
 
     # 6. Train speed predictor on GPS-available segments
-    speed_predictor = SpeedPredictor(window_size=30)
+    # window_size=15 (1.5s): short enough to track speed ramps with low lag,
+    # long enough for stable statistics of the speed-dependent vibration
+    speed_predictor = SpeedPredictor(window_size=15)
     imu_features = np.column_stack([accel_cal, gyro_cal])
+
+    # Pothole/bump isolation: bump spikes corrupt IMU windows used for
+    # training and inference (5 m/s^2 spikes vs 0.5 vibration signal)
+    bump_mask = calibrator.detect_potholes(accel_cal[:, 2], threshold=3.0, min_gap=15)
+    # dilate mask by +/- window_size so no training window touches a bump
+    bump_pad = np.copy(bump_mask)
+    pad = speed_predictor.window_size
+    for i in np.where(bump_mask)[0]:
+        bump_pad[max(0, i - pad):i + pad] = True
 
     windows = []
     speed_targets = []
-    for i in range(30, n):
-        if gps_available[i] and gps_speed_ms[i] > 0.5:
-            windows.append(imu_features[i-30:i])
+    for i in range(speed_predictor.window_size, n):
+        if gps_available[i] and gps_speed_ms[i] > 0.5 and not bump_pad[i]:
+            windows.append(imu_features[i-speed_predictor.window_size:i])
             speed_targets.append(gps_speed_ms[i])
 
     if len(windows) > 50:
         speed_predictor.train(windows, speed_targets)
 
-    # Predict speed for all
+    # Predict speed for all (AI model - works with or without GPS)
     speed_pred = speed_predictor.predict_sequence(imu_features, dt)
 
-    # Override with GPS speed where available (for ground truth comparison)
-    speed_for_dr = speed_pred.copy()
-    for i in range(n):
-        if gps_available[i] and gps_speed_ms[i] > 0:
-            speed_for_dr[i] = gps_speed_ms[i]
+    # Inference outlier rejection: bump spikes corrupt feature windows, so
+    # replace those predictions with interpolated values from clean neighbors
+    bad_pred = bump_pad & (speed_pred > 0)
+    if bad_pred.any():
+        good_idx = np.where(~bad_pred)[0]
+        speed_pred[bad_pred] = np.interp(
+            np.where(bad_pred)[0], good_idx, speed_pred[good_idx]
+        )
 
-    # 7. Dead Reckoning (no GPS)
+    # 7. Dead Reckoning (zero GPS): AI-predicted speed + mag-aided gyro heading.
+    #    This is the "what IMU+AI alone can do" baseline - no satellite info at all.
     dr = DeadReckoner(dt=actual_dt)
-    dr_pos, dr_vel, dr_heading = dr.integrate(accel_nav, gyro_cal, speed_for_dr)
+    dr_pos, dr_vel, dr_heading = dr.integrate(accel_nav, gyro_cal, speed_pred, mag_heading)
 
-    # 8. EKF Fusion (with GPS + NHC + AI speed)
+    # 8. EKF Fusion: GPS position (when visible) + magnetometer heading + AI speed
     ekf = EKFusion(dt=actual_dt)
     ekf_pos, ekf_vel = ekf.process_sequence(
-        accel_nav, gyro_cal, gps_available, gps_positions, speed_for_dr
+        accel_nav, gyro_cal, gps_available, gps_positions, speed_pred, mag_heading
     )
 
     # 9. Map Matching on EKF output
@@ -103,12 +130,17 @@ def run_pipeline(duration_sec=120, dt=0.1):
     matcher.set_road_network(gps_positions)
     ekf_matched, ekf_matched_h = matcher.match_sequence(ekf_pos, dr_heading)
 
+    # 9b. Map Matching on pure DR output (shows how much road-constraints
+    #     can rescue even a GPS-free solution - good for the demo story)
+    matcher2 = MapMatcher()
+    matcher2.set_road_network(gps_positions)
+    dr_matched, _ = matcher2.match_sequence(dr_pos, dr_heading)
+
     # 10. Compute metrics
     def compute_drift(est_pos, gt_x, gt_y):
         error = np.sqrt((est_pos[:, 0] - gt_x)**2 + (est_pos[:, 1] - gt_y)**2)
-        total_dist = np.sqrt(gt_x[-1]**2 + gt_y[-1]**2)
-        if total_dist < 1:
-            total_dist = np.sum(np.sqrt(np.diff(gt_x)**2 + np.diff(gt_y)**2))
+        # Path length (arc length), not displacement - honest drift denominator
+        total_dist = float(np.sum(np.sqrt(np.diff(gt_x)**2 + np.diff(gt_y)**2)))
         final_drift = error[-1]
         drift_pct = (final_drift / total_dist * 100) if total_dist > 0 else 999
         return {
@@ -122,9 +154,10 @@ def run_pipeline(duration_sec=120, dt=0.1):
     dr_metrics = compute_drift(dr_pos, gt_x, gt_y)
     ekf_metrics = compute_drift(ekf_pos, gt_x, gt_y)
     map_metrics = compute_drift(ekf_matched, gt_x, gt_y)
+    dr_matched_metrics = compute_drift(dr_matched, gt_x, gt_y)
 
-    # Speed prediction metrics
-    valid_mask = gps_available & (gps_speed_ms > 0.5) & (tunnel_start > np.arange(n)) | (np.arange(n) > tunnel_end)
+    # Speed prediction metrics (only where GPS speed is a valid reference)
+    valid_mask = gps_available & (gps_speed_ms > 0.5)
     if valid_mask.sum() > 10:
         speed_rmse = float(np.sqrt(np.mean((speed_pred[valid_mask] - gps_speed_ms[valid_mask])**2)))
     else:
@@ -145,10 +178,18 @@ def run_pipeline(duration_sec=120, dt=0.1):
             'x': gt_x[indices].tolist(),
             'y': gt_y[indices].tolist(),
         },
+        'gps_available': gps_available[indices].tolist(),
+        'gt_heading_deg': np.degrees(gt_heading)[indices].tolist(),
+        'gt_speed_ms': gt_speed[indices].tolist(),
         'dead_reckoning': {
             'x': dr_pos[indices, 0].tolist(),
             'y': dr_pos[indices, 1].tolist(),
             'metrics': dr_metrics,
+        },
+        'dr_map_matched': {
+            'x': dr_matched[indices, 0].tolist(),
+            'y': dr_matched[indices, 1].tolist(),
+            'metrics': dr_matched_metrics,
         },
         'ekf_fusion': {
             'x': ekf_pos[indices, 0].tolist(),
@@ -174,12 +215,14 @@ def run_pipeline(duration_sec=120, dt=0.1):
         'metrics_summary': {
             'dr_rmse': dr_metrics['rmse'],
             'dr_drift_pct': dr_metrics['drift_pct'],
+            'dr_matched_rmse': dr_matched_metrics['rmse'],
+            'dr_matched_drift_pct': dr_matched_metrics['drift_pct'],
             'ekf_rmse': ekf_metrics['rmse'],
             'ekf_drift_pct': ekf_metrics['drift_pct'],
             'map_rmse': map_metrics['rmse'],
             'map_drift_pct': map_metrics['drift_pct'],
             'speed_rmse': speed_rmse,
-            'total_distance': float(np.sqrt(gt_x[-1]**2 + gt_y[-1]**2)),
+            'total_distance': float(np.sum(np.sqrt(np.diff(gt_x)**2 + np.diff(gt_y)**2))),
             'total_time': float(duration_sec),
             'dr_pass': dr_metrics['drift_pct'] < 10,
             'ekf_pass': ekf_metrics['drift_pct'] < 10,
@@ -273,8 +316,11 @@ def serve_output(filename):
 
 @app.route('/api/run')
 def api_run():
+    from flask import request
     try:
-        result = run_pipeline()
+        duration = request.args.get('duration', 120, type=int)
+        duration = max(30, min(300, duration))
+        result = run_pipeline(duration_sec=duration)
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500

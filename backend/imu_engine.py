@@ -2,7 +2,6 @@
 import numpy as np
 from scipy.signal import butter, filtfilt
 from sklearn.linear_model import Ridge
-from filterpy.kalman import ExtendedKalmanFilter
 
 
 class IMUCalibrator:
@@ -62,8 +61,8 @@ class AlignmentEngine:
     def __init__(self):
         self.rotation_matrix = np.eye(3)
 
-    def estimate_alignment(self, accel, gyro, heading_est=None):
-        """Estimate pitch, roll from gravity, yaw from driving direction."""
+    def estimate_alignment(self, accel, gyro, mag=None, heading_est=None):
+        """Estimate pitch, roll from gravity, yaw from magnetometer."""
         n = min(100, len(accel))
         gravity = np.mean(accel[:n], axis=0) + np.array([0, 0, 9.81])
         norm = np.linalg.norm(gravity)
@@ -74,19 +73,16 @@ class AlignmentEngine:
         pitch = np.arctan2(-gravity[0], np.sqrt(gravity[1]**2 + gravity[2]**2))
         roll = np.arctan2(gravity[1], gravity[2])
 
-        # Yaw from driving direction (acceleration PCA)
+        # Yaw from magnetometer (tilt-compensated compass - reliable in tunnels
+        # where satellite positioning fails but the geomagnetic field persists)
         if heading_est is not None:
             yaw = heading_est
+        elif mag is not None and len(mag) >= 10:
+            mx = np.mean(mag[:n, 0])
+            my = np.mean(mag[:n, 1])
+            yaw = np.arctan2(my, mx)
         else:
-            if n < 10:
-                yaw = 0.0
-            else:
-                acc_horiz = accel[:n, :2]
-                if np.std(acc_horiz) > 0.01:
-                    pca_direction = np.mean(acc_horiz, axis=0)
-                    yaw = np.arctan2(pca_direction[1], pca_direction[0])
-                else:
-                    yaw = 0.0
+            yaw = 0.0
 
         # Build rotation matrix from euler angles
         self.rotation_matrix = self._euler_to_rot(yaw, pitch, roll)
@@ -182,124 +178,166 @@ class SpeedPredictor:
 
 
 class DeadReckoner:
-    """Inertial dead reckoning with NHC constraints."""
+    """Inertial dead reckoning: gyro heading bounded by magnetometer,
+    velocity magnitude from the AI speed predictor.
 
-    def __init__(self, dt=0.1):
+    First-principles design for a car:
+      1. Heading = integral of gyro yaw rate (short-term accurate).
+         Gyro bias/noise causes unbounded heading drift, so the estimate
+         is slowly pulled toward a tilt-compensated magnetometer heading
+         (complementary filter). The geomagnetic field exists inside
+         tunnels, so this aiding survives GNSS-denied zones.
+      2. Speed = AI-predicted speed (Ridge regression on IMU windows).
+         Consumer-grade accelerometers double-integrate to garbage within
+         seconds, so forward speed is taken from the learned model -
+         this is exactly what PS-168 demands: AI-guided dead reckoning.
+      3. Non-holonomic constraint: a car does not slide sideways, so
+         velocity is strictly along the heading vector.
+    """
+
+    def __init__(self, dt=0.1, mag_gain=0.02, speed_gain=0.08):
         self.dt = dt
+        self.mag_gain = mag_gain      # complementary filter gain for mag heading
+        self.speed_gain = speed_gain  # complementary filter gain for AI speed
 
-    def integrate(self, accel_nav, gyro_nav, speed_pred=None):
-        """Integrate IMU to get position."""
+    @staticmethod
+    def _wrap_angle(a):
+        return (a + np.pi) % (2 * np.pi) - np.pi
+
+    def integrate(self, accel_nav, gyro_nav, speed_pred=None, mag_heading=None):
+        """Integrate IMU to get position.
+
+        mag_heading: per-sample magnetometer heading (rad) or None.
+        speed_pred:  per-sample AI-predicted speed (m/s) or None.
+        """
         n = len(accel_nav)
         pos = np.zeros((n, 2))
         vel = np.zeros((n, 2))
         heading = np.zeros(n)
-        heading[0] = 0.0
+        heading[0] = gyro_nav[0, 2] * self.dt if n > 0 else 0.0
+
+        # Complementary speed estimate: accelerometer integral tracks fast
+        # transients (zero lag); the AI model reference removes integration
+        # drift. Classic sensor-fusion architecture, applied to speed.
+        v_fused = 0.0
 
         for i in range(1, n):
-            # Heading from gyro integration
-            heading[i] = heading[i-1] + gyro_nav[i, 2] * self.dt
-            ch, sh = np.cos(heading[i]), np.sin(heading[i])
+            # --- Heading: gyro integration ---
+            h = heading[i-1] + gyro_nav[i, 2] * self.dt
 
-            # Velocity integration with NHC
-            vx = vel[i-1, 0] + accel_nav[i, 0] * self.dt
-            vy = vel[i-1, 1] + accel_nav[i, 1] * self.dt
+            # --- Complementary filter: pull toward magnetometer ---
+            if mag_heading is not None and not np.isnan(mag_heading[i]):
+                err = self._wrap_angle(mag_heading[i] - h)
+                h += self.mag_gain * err
 
-            # Non-Holonomic Constraints: zero lateral velocity
-            v_forward = vx * ch + vy * sh
-            v_lateral = -vx * sh + vy * ch
-            v_lateral = 0.0  # NHC
-            vx = v_forward * ch - v_lateral * sh
-            vy = v_forward * sh + v_lateral * ch
+            heading[i] = h
+            ch, sh = np.cos(h), np.sin(h)
 
-            # Speed magnitude constraint from AI model
+            # --- Forward accel projected onto heading ---
+            ax_fwd = accel_nav[i, 0] * ch + accel_nav[i, 1] * sh
+            v_fused += ax_fwd * self.dt
+            v_fused *= 0.999  # leaky integrator for numerical safety
+
+            # --- Blend in AI speed reference ---
             if speed_pred is not None and speed_pred[i] > 0:
-                current_speed = np.sqrt(vx**2 + vy**2)
-                if current_speed > 0.1:
-                    scale = speed_pred[i] / current_speed
-                    scale = np.clip(scale, 0.3, 3.0)
-                    vx *= scale
-                    vy *= scale
+                v_fused += self.speed_gain * (speed_pred[i] - v_fused)
 
-            vel[i] = [vx, vy]
+            v = max(0.0, v_fused)
+
+            # NHC: velocity strictly along heading (car cannot slide sideways)
+            vel[i, 0] = v * ch
+            vel[i, 1] = v * sh
             pos[i] = pos[i-1] + vel[i] * self.dt
 
         return pos, vel, heading
 
 
 class EKFusion:
-    """Extended Kalman Filter for GNSS+INS fusion."""
+    """5-state EKF with unicycle kinematic model.
+
+    State: [x, y, v, yaw, gyro_bias]
+      - v is a scalar along heading, so the non-holonomic constraint
+        (no sideways sliding) is inherent in the model, not bolted on.
+    Aiding sources (each independently usable in GNSS-denied zones):
+      1. GPS position updates (when satellites visible)
+      2. Magnetometer heading updates (works in tunnels)
+      3. AI-predicted speed updates (Ridge model on IMU)
+    Result: yaw and speed stay bounded during outage, so position
+    error grows slowly and snaps back instantly at GPS re-acquisition.
+    """
 
     def __init__(self, dt=0.1):
         self.dt = dt
-        self.ekf = ExtendedKalmanFilter(dim_x=9, dim_z=2)
-        self._init_filter()
+        self.n = 5
+        # Process noise
+        self.Q = np.diag([0.02, 0.02, 0.25, 0.001, 0.00002])
+        # Measurement noise
+        self.R_gps = np.eye(2) * 4.0        # GPS sigma ~2m
+        self.R_mag = np.array([[0.008]])    # mag heading sigma ~5.1 deg
+        self.R_speed = np.array([[1.2]])    # speed sigma ~1.1 m/s
+        self.ekf = None  # replaced by manual implementation below
+        self.x = np.zeros(5)
+        self.P = np.eye(5)
+
+    @staticmethod
+    def _wrap_angle(a):
+        return (a + np.pi) % (2 * np.pi) - np.pi
 
     def _init_filter(self):
-        """Initialize EKF state and matrices."""
-        self.ekf.x = np.zeros(9)  # [x,y,vx,vy,yaw,b_gz,b_ax,b_ay,alt]
-        self.ekf.P *= 10.0
-
-        # Process noise
-        self.ekf.Q[0:2, 0:2] = np.eye(2) * 0.1
-        self.ekf.Q[2:4, 2:4] = np.eye(2) * 1.0
-        self.ekf.Q[4, 4] = 0.01
-        self.ekf.Q[5, 5] = 0.001
-        self.ekf.Q[6:8, 6:8] = np.eye(2) * 0.01
-
-        # Measurement noise (GPS)
-        self.ekf.R = np.eye(2) * 4.0
-
-    def FJacobian(self, x):
-        """State transition Jacobian."""
-        F = np.eye(9)
-        dt = self.dt
-        yaw = x[4]
-        F[0, 2] = dt * np.cos(yaw)
-        F[0, 3] = -dt * np.sin(yaw)
-        F[1, 2] = dt * np.sin(yaw)
-        F[1, 3] = dt * np.cos(yaw)
-        return F
-
-    def HJacobian(self, x):
-        """Measurement Jacobian (GPS observes position)."""
-        H = np.zeros((2, 9))
-        H[0, 0] = 1.0
-        H[1, 1] = 1.0
-        return H
+        self.x = np.zeros(5)
+        self.P = np.diag([25.0, 25.0, 9.0, 0.25, 0.01])
 
     def predict_step(self, accel_body, gyro_body):
-        """Prediction using IMU."""
-        x = self.ekf.x
+        """Time update: propagate state with gyro + current speed."""
         dt = self.dt
-        yaw = x[4]
-        ch, sh = np.cos(yaw), np.sin(yaw)
+        v, yaw, b_g = self.x[2], self.x[3], self.x[4]
+        gyro_corr = gyro_body[2] - b_g
 
-        # Acceleration in nav frame
-        ax = accel_body[0] * ch - accel_body[1] * sh - x[6]
-        ay = accel_body[0] * sh + accel_body[1] * ch - x[7]
+        self.x[3] = yaw + gyro_corr * dt
+        c, s = np.cos(self.x[3]), np.sin(self.x[3])
+        self.x[0] += v * c * dt
+        self.x[1] += v * s * dt
 
-        # NHC: zero lateral velocity
-        v_forward = x[2] * ch + x[3] * sh
-        ax_body = ax * ch + ay * sh
-        ay_body = -ax * sh + ay * ch
-        ay_body = 0.0  # NHC
+        F = np.eye(5)
+        F[0, 2] = c * dt
+        F[0, 3] = -v * s * dt
+        F[1, 2] = s * dt
+        F[1, 3] = v * c * dt
+        F[3, 4] = -dt
+        self.P = F @ self.P @ F.T + self.Q
 
-        self.ekf.F = self.FJacobian(x)
-        self.ekf.predict()
-
-        # State correction for NHC
-        self.ekf.x[0] += x[2] * dt
-        self.ekf.x[1] += x[3] * dt
-        self.ekf.x[2] += (ax_body * ch - ay_body * sh) * dt
-        self.ekf.x[3] += (ax_body * sh + ay_body * ch) * dt
-        self.ekf.x[4] += (gyro_body[2] - x[5]) * dt
+    def _update(self, z, R, H):
+        """Generic scalar/vector update with Joseph form covariance."""
+        innov = z - H @ self.x
+        S = H @ self.P @ H.T + R
+        K = self.P @ H.T @ np.linalg.inv(S)
+        self.x = self.x + K @ innov
+        IKH = np.eye(self.n) - K @ H
+        self.P = IKH @ self.P @ IKH.T + K @ R @ K.T
 
     def update_step(self, gps_pos):
-        """Update with GPS position measurement."""
-        self.ekf.update(gps_pos[:2], HJacobian=self.HJacobian, Hx=lambda x: x[:2])
+        """GPS position measurement (2D)."""
+        H = np.zeros((2, 5))
+        H[0, 0] = 1.0
+        H[1, 1] = 1.0
+        self._update(np.asarray(gps_pos[:2]), self.R_gps, H)
 
-    def process_sequence(self, accel, gyro, gps_available, gps_positions, speed_pred=None):
-        """Run EKF through entire sequence."""
+    def update_mag(self, mag_heading):
+        """Magnetometer heading measurement (1D, angle-aware)."""
+        H = np.zeros((1, 5))
+        H[0, 3] = 1.0
+        z = np.array([self.x[3] + self._wrap_angle(mag_heading - self.x[3])])
+        self._update(z, self.R_mag, H)
+
+    def update_speed(self, speed):
+        """Speed measurement from AI predictor / GPS (1D)."""
+        H = np.zeros((1, 5))
+        H[0, 2] = 1.0
+        self._update(np.array([speed]), self.R_speed, H)
+
+    def process_sequence(self, accel, gyro, gps_available, gps_positions,
+                         speed_pred=None, mag_heading=None):
+        """Run EKF through entire sequence with all aiding sources."""
         n = len(accel)
         positions = np.zeros((n, 2))
         velocities = np.zeros((n, 2))
@@ -312,15 +350,18 @@ class EKFusion:
             if gps_available[i] and not np.any(np.isnan(gps_positions[i])):
                 self.update_step(gps_positions[i])
 
-            if speed_pred is not None and speed_pred[i] > 0:
-                ch = np.cos(self.ekf.x[4])
-                sh = np.sin(self.ekf.x[4])
-                v_fwd = speed_pred[i]
-                self.ekf.x[2] = v_fwd * ch
-                self.ekf.x[3] = v_fwd * sh
+            if mag_heading is not None and not np.isnan(mag_heading[i]):
+                self.update_mag(mag_heading[i])
 
-            positions[i] = self.ekf.x[:2]
-            velocities[i] = self.ekf.x[2:4]
+            if speed_pred is not None and speed_pred[i] > 0:
+                self.update_speed(speed_pred[i])
+
+            # Re-apply kinematic consistency after updates
+            c, s = np.cos(self.x[3]), np.sin(self.x[3])
+            self.x[2] = max(0.0, self.x[2])
+            velocities[i, 0] = self.x[2] * c
+            velocities[i, 1] = self.x[2] * s
+            positions[i] = self.x[:2]
 
         return positions, velocities
 

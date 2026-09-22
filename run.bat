@@ -3,7 +3,7 @@ title DrishtiNav - AI Dead Reckoning System
 echo.
 echo  ==========================================
 echo   DRISHTINAV - AI Dead Reckoning System
-echo   ISRO / SIH 2025 / PS-168
+echo   ISRO / SIH 2026 / PS-168
 echo  ==========================================
 echo.
 echo Starting server...
