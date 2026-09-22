@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#004E89">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>DrishtiNav</title>
+<link rel="manifest" href="/app/manifest.json">
+<link rel="icon" href="/app/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/vendor/leaflet.css">
+<link rel="stylesheet" href="/app/app.css">
+</head>
+<body>
+<div id="map"></div>
+
+<header class="topbar">
+  <div class="brand">DRISHTI<span>NAV</span></div>
+  <div id="modePill" class="pill mode-INIT">INIT</div>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+
+<section class="hud">
+  <div class="hud-cell"><label>SPEED</label><b id="hSpeed">0</b><small>km/h</small></div>
+  <div class="hud-cell"><label>HEADING</label><b id="hHead">—</b><small>deg</small></div>
+  <div class="hud-cell"><label>ACCURACY</label><b id="hSig">—</b><small>m (1σ)</small></div>
+  <div class="hud-cell"><label>GNSS</label><b id="hGnss">—</b><small id="hGnssSub">no fix</small></div>
+</section>
+
+<section class="sheet" id="sheet">
+  <div class="grab" id="grab"></div>
+  <div class="row">
+    <button id="btnLive" class="btn primary">▶ Live (phone sensors)</button>
+    <button id="btnReplay" class="btn">⟲ Replay demo</button>
+  </div>
+  <div class="row">
+    <select id="replaySel"></select>
+    <select id="replaySpeed"><option value="1">1×</option><option value="4" selected>4×</option><option value="10">10×</option></select>
+  </div>
+  <div class="row">
+    <label class="toggle"><input type="checkbox" id="chkOutage"> Simulate GNSS outage (tunnel)</label>
+    <button id="btnRecord" class="btn small">● Record</button>
+  </div>
+  <div class="diag" id="diag">
+    <div><span>AI speed (SpeedNet)</span><b id="dAi">—</b></div>
+    <div><span>Stationary / ZUPT</span><b id="dStat">—</b></div>
+    <div><span>Map match</span><b id="dMap">—</b></div>
+    <div><span>Mount (roll/pitch/yaw)</span><b id="dMount">—</b></div>
+    <div><span>IMU rate · step time</span><b id="dRate">—</b></div>
+    <div><span>Position error vs reference</span><b id="dErr">—</b></div>
+  </div>
+  <p class="foot">All navigation runs on this device. Model: SpeedNet (TCN, ~19k params) · roads: offline OpenStreetMap. Team Paradigm · PS 26168</p>
+</section>
+
+<script src="/config.js"></script>
+<script src="/vendor/leaflet.js"></script>
+<script src="/app/engine.js"></script>
+<script src="/app/app.js"></script>
+</body>
+</html>

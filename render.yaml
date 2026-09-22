@@ -1,0 +1,15 @@
+# One-click deploy of the DrishtiNav live engine API (Render Blueprint)
+services:
+  - type: web
+    name: drishtinav-engine
+    runtime: python
+    repo: https://github.com/Axzeon/drishtinav
+    plan: free
+    region: singapore
+    branch: main
+    buildCommand: pip install -r requirements-render.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 600 server.app:app
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8

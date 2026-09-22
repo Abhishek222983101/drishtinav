@@ -1,0 +1,9 @@
+3 test segments, 35.2 km
+L= 30s ins_nhc   n= 35 dist=   265 m  drift median  34.9%  agg  45.3%  pass<10%   9.4%  end err med   91.5 m  238 us/step
+L= 30s ai_speed  n= 35 dist=   265 m  drift median  18.2%  agg  19.3%  pass<10%  15.6%  end err med   41.0 m  393 us/step
+L= 30s full      n= 35 dist=   265 m  drift median  15.2%  agg  18.5%  pass<10%  28.1%  end err med   38.7 m  411 us/step
+L= 60s ins_nhc   n= 27 dist=   500 m  drift median  37.9%  agg  72.7%  pass<10%   3.7%  end err med  195.0 m  169 us/step
+L= 60s ai_speed  n= 27 dist=   500 m  drift median  15.6%  agg  17.9%  pass<10%  25.9%  end err med   70.5 m  266 us/step
+L= 60s full      n= 27 dist=   500 m  drift median  10.9%  agg  14.1%  pass<10%  44.4%  end err med   39.4 m  306 us/step
+L=120s ins_nhc   n= 19 dist=   946 m  drift median  47.9%  agg  72.2%  pass<10%   5.6%  end err med  309.3 m  167 us/step
+L=120s ai_speed  n= 19 dist=   946 m  drift median  14.9%  agg  16.3%  pass<10%  27.8%  end err med  131.2 m  261 us/step

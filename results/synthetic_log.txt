@@ -1,0 +1,12 @@
+smartphone 1 {'ins': 24.48, 'ai': 11.44, 'full': 6.91}
+smartphone 2 {'ins': 27.57, 'ai': 10.51, 'full': 2.71}
+smartphone 3 {'ins': 48.8, 'ai': 8.39, 'full': 1.31}
+smartphone 4 {'ins': 22.83, 'ai': 12.12, 'full': 1.97}
+smartphone 5 {'ins': 46.58, 'ai': 19.54, 'full': 0.78}
+smartphone 6 {'ins': 24.75, 'ai': 8.0, 'full': 12.71}
+smartphone 7 {'ins': 16.95, 'ai': 2.33, 'full': 1.49}
+smartphone 8 {'ins': 25.45, 'ai': 1.12, 'full': 1.24}
+smartphone 9 {'ins': 33.79, 'ai': 12.0, 'full': 1.08}
+smartphone 10 {'ins': 40.02, 'ai': 8.55, 'full': 0.84}
+fog 1 {'ins': 0.49, 'full': 0.22}
+fog 2 {'ins': 0.26, 'full': 0.09}

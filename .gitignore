@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+data/cache/
+*.egg-info/
+.DS_Store
+# large raw dataset lives outside the repo (scripts/download_iovnbd.py)
+iovnbd/
+site/
+.vercel/
