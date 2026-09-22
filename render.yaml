@@ -3,7 +3,7 @@ services:
   - type: web
     name: drishtinav-engine
     runtime: python
-    repo: https://github.com/Axzeon/drishtinav
+    repo: https://github.com/Abhishek222983101/drishtinav
     plan: free
     region: singapore
     branch: main
