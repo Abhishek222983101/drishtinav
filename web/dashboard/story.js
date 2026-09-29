@@ -158,18 +158,24 @@
         ctx.globalAlpha = entryFade;
       }
 
+      // a solid, convex arrowhead — the shape real map apps use for a heading
+      // marker; the previous concave dart shape read as a smudge at this size
       ctx.save();
       ctx.translate(x, y); ctx.rotate(heading);
+      ctx.beginPath(); ctx.ellipse(-1, 0, 8, 8, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,.14)'; ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(12, 0); ctx.lineTo(-7, 7); ctx.lineTo(-3, 0); ctx.lineTo(-7, -7); ctx.closePath();
       ctx.fillStyle = denied ? COLORS_BA.dot : color;
-      ctx.strokeStyle = '#1A1A1A'; ctx.lineWidth = 2; ctx.lineJoin = 'round';
-      ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(-6, 6); ctx.lineTo(-3, 0); ctx.lineTo(-6, -6); ctx.closePath();
-      ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round';
+      ctx.stroke();
+      ctx.fill();
       ctx.restore();
 
       if (denied) {
         ctx.globalAlpha = entryFade * (0.55 + 0.45 * Math.sin(performance.now() / 180));
-        ctx.font = '11px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('📡', x + 13, y - 11);
+        ctx.font = '600 12px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('📡', x + 14, y - 12);
       }
       ctx.globalAlpha = 1;
     }
