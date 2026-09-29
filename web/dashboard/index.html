@@ -363,8 +363,6 @@
         <h3>Every part of the pipeline — running on-device</h3>
         <ul class="app-list">
           <li><b>No server round-trip.</b> The AI model, the fusion filter, and the offline map all run directly in JavaScript on the device itself.</li>
-          <li><b>Works with your phone's real sensors.</b> Tap "Live" and grant motion-sensor access to navigate with your own phone's accelerometer and gyroscope.</li>
-          <li><b>Or just watch a replay.</b> Tap "Replay demo" to see a real recorded drive navigated live, no sensors needed.</li>
           <li><b>Installable.</b> Add it to your home screen and it behaves like a native app, offline maps and all.</li>
         </ul>
         <div class="app-cta-row">
@@ -373,6 +371,30 @@
             <img src="/dashboard/qr-app.svg" alt="QR code to open the DrishtiNav app" width="96" height="96">
             <span>📷 Scan with your<br>phone to open it there</span>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="demo-howto">
+      <h3>How to demo this — step by step</h3>
+      <div class="demo-howto-grid">
+        <div class="demo-howto-col">
+          <div class="demo-howto-badge">On this laptop <span>— the reliable path for a room demo</span></div>
+          <ol class="demo-steps">
+            <li>In the app above (or open <a href="/app/" target="_blank" rel="noopener">the full-screen app ↗</a>), tap <b>"Replay demo."</b></li>
+            <li>Pick one of the three real recorded drives from the dropdown — the Pragati Maidan tunnel run is the clearest GPS-blackout story.</li>
+            <li>Watch the marker navigate live on the map, with real AI speed, mode, and map-match numbers updating below it. Nothing here is pre-rendered — it's computed in this browser tab as it plays.</li>
+            <li>Tick <b>"Simulate GNSS outage"</b> at any point to force a GPS blackout and watch the mode badge switch to dead-reckoning.</li>
+          </ol>
+        </div>
+        <div class="demo-howto-col">
+          <div class="demo-howto-badge">On your own phone <span>— the "no speedometer" proof</span></div>
+          <ol class="demo-steps">
+            <li>Scan the QR code, or open <span class="mono">drishtinav.vercel.app/app</span> directly.</li>
+            <li>Tap <b>"Live (phone sensors)"</b> and allow motion-sensor access when asked.</li>
+            <li>Walk or drive — the AI is now reading your phone's real accelerometer and gyroscope, with no speedometer and no server involved.</li>
+            <li>If you tap Live on a laptop by mistake, the app will tell you there's no motion sensor and point you back to Replay demo — that's expected, not a bug.</li>
+          </ol>
         </div>
       </div>
     </div>

@@ -55,6 +55,8 @@
   function newEngine(frame, roads) {
     engine = new E.NavEngine({ speednet, roads, frame });
     lastOut = prevOut = null; drStart = null; pathPts = []; pathLine.setLatLngs([]); gnssLayer.clearLayers();
+    $('modePill').textContent = 'INIT'; $('modePill').className = 'pill mode-INIT';
+    for (const id of ['hSpeed', 'hHead', 'hSig', 'dAi', 'dStat', 'dMap', 'dErr']) $(id).textContent = '—';
   }
 
   function onOutput(o, truth) {
@@ -112,8 +114,16 @@
     try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { /* optional */ }
     t0Live = performance.now();
     timer = setInterval(liveTick, 1000 / RATE);
+    // Desktops/laptops have no accelerometer, so devicemotion just never fires —
+    // without this the UI looks silently frozen instead of explaining why.
+    clearTimeout(noMotionTimer);
+    noMotionTimer = setTimeout(() => {
+      if (mode === 'live' && acc.n === 0 && !lastOut) {
+        alertBanner('No motion sensor detected — this is normal on a laptop/desktop. Use "Replay demo" here, or open this page on your phone to use Live.');
+      }
+    }, 2500);
   }
-  let watchId = null;
+  let watchId = null, noMotionTimer = null;
 
   function onMotion(ev) {
     const a = ev.accelerationIncludingGravity, r = ev.rotationRate;
@@ -189,9 +199,13 @@
   async function startReplay() {
     stopAll();
     const key = $('replaySel').value;
+    if (!key) { alertBanner('No demo drive available offline — reconnect once, then it works offline too.'); return; }
     alertBanner('Loading drive…');
-    const drv = await (await fetch(`${CFG.data}/drives/${key}.json`)).json();
-    const roads = drv.roads ? await (await fetch(`${CFG.data}/osm/${drv.roads}`)).json() : null;
+    let drv, roads;
+    try {
+      drv = await (await fetch(`${CFG.data}/drives/${key}.json`)).json();
+      roads = drv.roads ? await (await fetch(`${CFG.data}/osm/${drv.roads}`)).json() : null;
+    } catch (e) { alertBanner('Could not load the demo drive: ' + e.message); return; }
     $('banner').hidden = true;
     const frame = new E.LocalFrame(drv.truth[0][0], drv.truth[0][1]);
     newEngine(frame, roads);
@@ -219,6 +233,7 @@
   /* ------------------------------------------------------------ misc */
   function stopAll() {
     clearInterval(timer); timer = null;
+    clearTimeout(noMotionTimer);
     if (mode === 'live') {
       window.removeEventListener('devicemotion', onMotion);
       if (watchId != null) navigator.geolocation.clearWatch(watchId);
