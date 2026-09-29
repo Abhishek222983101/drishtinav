@@ -6,37 +6,52 @@
   const $ = id => document.getElementById(id);
   const CFG = window.DRISHTI || { data: '/data', engine: '' };
 
-  /* ---------------------------------------------------------- sticky nav */
+  /* --------------------------------------------------------- view router */
+  // The site is an app-shell: exactly one [data-view] section is visible at
+  // a time, switched by nav clicks or the URL hash (#checklist, #demo, …).
+  // Nothing scroll-based — this is real navigation, not a fade-in-on-scroll bar.
+  const VIEWS = ['home', 'checklist', 'how', 'demo', 'app'];
+
+  function showView(name, opts = {}) {
+    if (!VIEWS.includes(name)) name = 'home';
+    document.querySelectorAll('[data-view]').forEach(el => {
+      el.classList.toggle('view-active', el.dataset.view === name);
+    });
+    document.querySelectorAll('.topnav-links a').forEach(a => {
+      const target = (a.getAttribute('href') || '').replace('#', '') || 'home';
+      a.classList.toggle('active', target === name);
+    });
+    if (!opts.silent) window.scrollTo(0, 0);
+    document.dispatchEvent(new CustomEvent('view:shown', { detail: { name } }));
+  }
+
   function initNav() {
     const nav = $('topnav');
-    const hero = document.querySelector('.hero');
-    if (!nav || !hero) return;
-    const onScroll = () => {
-      nav.classList.toggle('visible', window.scrollY > hero.offsetHeight * 0.6);
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
+    if (!nav) return;
+
+    document.body.addEventListener('click', e => {
+      const a = e.target.closest('a[href^="#"]');
+      if (!a) return;
+      const name = a.getAttribute('href').replace('#', '') || 'home';
+      if (!VIEWS.includes(name)) return; // e.g. plain external anchors, if any
+      e.preventDefault();
+      if (location.hash !== '#' + name) location.hash = name;
+      else showView(name);
+      const links = document.querySelector('.topnav-links');
+      if (links) links.classList.remove('open');
+    });
+
+    window.addEventListener('hashchange', () => {
+      showView((location.hash || '#home').slice(1));
+    });
 
     const toggle = $('navToggle');
     const links = document.querySelector('.topnav-links');
     if (toggle && links) {
       toggle.addEventListener('click', () => links.classList.toggle('open'));
-      links.querySelectorAll('a').forEach(a => a.addEventListener('click', () => links.classList.remove('open')));
     }
 
-    // scroll-spy: highlight the nav link for the section currently in view
-    const sections = [...document.querySelectorAll('section[id]')].filter(s => !s.hidden);
-    const navLinks = [...document.querySelectorAll('.topnav-links a')];
-    if (sections.length && navLinks.length && 'IntersectionObserver' in window) {
-      const spy = new IntersectionObserver(entries => {
-        for (const e of entries) {
-          if (!e.isIntersecting) continue;
-          const link = navLinks.find(a => a.getAttribute('href') === '#' + e.target.id);
-          if (link) { navLinks.forEach(a => a.classList.remove('active')); link.classList.add('active'); }
-        }
-      }, { rootMargin: '-40% 0px -50% 0px' });
-      sections.forEach(s => spy.observe(s));
-    }
+    showView((location.hash || '#home').slice(1), { silent: true });
   }
 
   /* ------------------------------------------------- technical pipeline toggle */
@@ -73,7 +88,7 @@
     return { ctx, w, h };
   }
 
-  function drawFrame(cv, box, truthPts, pathPts, deniedMask, frac, color) {
+  function drawFrame(cv, box, truthPts, pathPts, deniedMask, frac, color, opts) {
     const { ctx, w, h } = setupCanvas(cv);
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
@@ -96,23 +111,67 @@
     truthPts.forEach(([lat, lon], i) => { const [x, y] = P(lat, lon); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
     ctx.stroke();
 
-    // travelled path up to `frac` of the way through
+    // travelled path up to `frac` of the way through — a fading trail, not a static line
     const n = Math.max(1, Math.round(pathPts.length * frac));
-    ctx.lineWidth = 3.5; ctx.strokeStyle = color; ctx.beginPath();
-    let started = false;
-    for (let i = 0; i < n; i++) {
-      const p = pathPts[i];
-      if (p[0] == null) continue;
-      const [x, y] = P(p[0], p[1]);
-      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    const TRAIL = 26; // most-recent points drawn opaque -> transparent
+    for (let i = Math.max(1, n - TRAIL); i < n; i++) {
+      const a = pathPts[i - 1], b = pathPts[i];
+      if (a[0] == null || b[0] == null) continue;
+      const age = (n - i) / TRAIL; // 0 = newest
+      ctx.globalAlpha = i < n - TRAIL + 4 ? Math.max(0, 1 - age) * 0.5 : 1;
+      ctx.lineWidth = 3.5; ctx.strokeStyle = color; ctx.lineCap = 'round';
+      const [x1, y1] = P(a[0], a[1]), [x2, y2] = P(b[0], b[1]);
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
     }
-    ctx.stroke();
+    // the rest of the driven path, drawn faint once it's outside the trail window
+    if (n - TRAIL > 1) {
+      ctx.globalAlpha = 0.22; ctx.lineWidth = 2.5; ctx.strokeStyle = color; ctx.beginPath();
+      let started = false;
+      for (let i = 0; i < n - TRAIL; i++) {
+        const p = pathPts[i];
+        if (p[0] == null) continue;
+        const [x, y] = P(p[0], p[1]);
+        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
 
-    // the moving dot
-    if (n > 0 && pathPts[n - 1][0] != null) {
-      const [x, y] = P(pathPts[n - 1][0], pathPts[n - 1][1]);
-      ctx.fillStyle = color; ctx.strokeStyle = '#1A1A1A'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.fill(); ctx.stroke();
+    // the moving marker — oriented in the direction of travel, with a live-lock
+    // pulse ring when GPS is available and a broken-signal glyph when it isn't
+    let head = null;
+    for (let i = n - 1; i >= 1; i--) {
+      if (pathPts[i][0] != null && pathPts[i - 1][0] != null) { head = i; break; }
+    }
+    if (head != null) {
+      const [x, y] = P(pathPts[head][0], pathPts[head][1]);
+      const [px, py] = P(pathPts[head - 1][0], pathPts[head - 1][1]);
+      const heading = Math.atan2(y - py, x - px);
+      const denied = !!(opts && opts.denied);
+      const entryFade = Math.min(1, frac / 0.03); // avoid a hard snap at loop restart
+      ctx.globalAlpha = entryFade;
+
+      if (!denied) {
+        const pulse = 9 + 4 * (0.5 + 0.5 * Math.sin(performance.now() / 260));
+        ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.globalAlpha = entryFade * 0.35;
+        ctx.beginPath(); ctx.arc(x, y, pulse, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = entryFade;
+      }
+
+      ctx.save();
+      ctx.translate(x, y); ctx.rotate(heading);
+      ctx.fillStyle = denied ? COLORS_BA.dot : color;
+      ctx.strokeStyle = '#1A1A1A'; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(-6, 6); ctx.lineTo(-3, 0); ctx.lineTo(-6, -6); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      ctx.restore();
+
+      if (denied) {
+        ctx.globalAlpha = entryFade * (0.55 + 0.45 * Math.sin(performance.now() / 180));
+        ctx.font = '11px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('📡', x + 13, y - 11);
+      }
+      ctx.globalAlpha = 1;
     }
   }
 
@@ -151,8 +210,10 @@
     const deniedEnd = n - 1 - [...denied].reverse().indexOf(1);
 
     function renderAt(frac) {
-      drawFrame(bad, box, truth, badPts, denied, frac, COLORS_BA.bad);
-      drawFrame(good, box, truth, goodPts, denied, frac, COLORS_BA.good);
+      const idxNow = Math.min(n - 1, Math.round(frac * n));
+      const nowDenied = !!denied[idxNow];
+      drawFrame(bad, box, truth, badPts, denied, frac, COLORS_BA.bad, { denied: nowDenied });
+      drawFrame(good, box, truth, goodPts, denied, frac, COLORS_BA.good, { denied: nowDenied });
       if (caption) {
         const idx = Math.min(n - 1, Math.round(frac * n));
         const inOutage = idx >= deniedStart && idx <= deniedEnd && deniedStart >= 0;
@@ -174,12 +235,20 @@
     }, { threshold: 0.1 }) : null;
     if (observer) observer.observe($('beforeAfter'));
 
+    // The canvas lives inside the "home" app-shell view; when it's hidden
+    // (display:none) clientWidth reads 0, so re-measure the moment it's shown.
+    document.addEventListener('view:shown', e => {
+      if (e.detail.name === 'home') requestAnimationFrame(() => renderAt(lastFrac));
+    });
+
     const CYCLE_S = 9;
     let t0 = performance.now();
+    let lastFrac = 0;
     function loop(now) {
       if (playing) {
         let frac = ((now - t0) / 1000 / CYCLE_S) % 1;
         if (frac < 0) frac = 0;
+        lastFrac = frac;
         renderAt(frac);
       }
       requestAnimationFrame(loop);
