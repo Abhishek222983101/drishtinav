@@ -101,6 +101,7 @@ def create_app():
         return send_from_directory(WEB / "vendor", p)
 
     @app.route("/favicon.ico")
+    @app.route("/favicon.svg")
     def favicon():
         return send_from_directory(WEB / "mobile", "icon.svg", mimetype="image/svg+xml")
 

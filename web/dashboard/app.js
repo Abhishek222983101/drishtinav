@@ -5,6 +5,12 @@ const COLORS = { truth: '#1A1A1A', ins: '#2a78d6', ai: '#eb6834', full: '#1baf7a
 const $ = id => document.getElementById(id);
 const CFG = window.DRISHTI || { data: '/data', engine: '' };     // written by /config.js
 const ORDER = ['ins', 'ai', 'full'];                   // ablation order (the server's JSON keys are sorted)
+// plain-English translation shown alongside the technical label, keyed by ablation
+const PLAIN = {
+  ins: 'Basic physics only — what most apps fall back to',
+  ai: '+ Our AI guesses the speed',
+  full: '🏆 DrishtiNav — our full system',
+};
 const cfgs = () => ORDER.filter(k => data.configs[k]).map(k => [k, data.configs[k]]);
 let scenarios = [], data = null, map = null, layers = [], car = null, playing = false, cursor = 0, raf = null;
 
@@ -73,8 +79,9 @@ function renderKpis() {
     const s = c.summary || {};
     const drift = s.drift_pct_median, pass = drift != null && drift < 10;
     const div = document.createElement('div');
-    div.className = 'kpi';
-    div.innerHTML = `<div class="lbl"><span class="sw" style="background:${COLORS[key]}"></span>${c.label}</div>
+    div.className = 'kpi' + (key === 'full' ? ' kpi-hero' : '');
+    div.innerHTML = `<div class="kpi-plain">${PLAIN[key] || ''}</div>
+      <div class="lbl"><span class="sw" style="background:${COLORS[key]}"></span>${c.label}</div>
       <div class="num">${fmt(drift, 2)} %</div>
       <div class="sub">median drift · end err ${fmt(s.end_err_median_m)} m · max ${fmt(s.max_err_mean_m)} m</div>
       <div class="sub">pass-rate &lt;10 %: ${s.pass_rate_10pct != null ? (100 * s.pass_rate_10pct).toFixed(0) + ' %' : '—'} · ${fmt(c.us_per_step, 0)} µs/step</div>
